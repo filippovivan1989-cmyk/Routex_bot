@@ -139,6 +139,13 @@ class Database:
         )
         await self.conn.commit()
 
+    async def clear_user_key(self, tg_id: int) -> None:
+        await self.conn.execute(
+            "UPDATE users SET key = NULL, last_activity_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE tg_id = ?",
+            (tg_id,),
+        )
+        await self.conn.commit()
+
     async def update_subscription(self, tg_id: int, subscribed: bool) -> None:
         await self.conn.execute(
             "UPDATE users SET is_subscribed = ?, last_activity_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE tg_id = ?",
