@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     panel_url: str = Field(..., alias="PANEL_URL")
     panel_login: str = Field(..., alias="PANEL_LOGIN")
     panel_password: str = Field(..., alias="PANEL_PASSWORD")
+    panel_inbound_id: int = Field(..., alias="PANEL_INBOUND_ID")
     events_webhook_token: str = Field(..., alias="EVENTS_WEBHOOK_TOKEN")
     webhook_url: str | None = Field(None, alias="WEBHOOK_URL")
     host: str = Field("0.0.0.0", alias="HOST")

@@ -54,7 +54,12 @@ async def main() -> None:
 
     setup_handlers(dp, set(settings.admin_ids))
 
-    xui_client = XUIClient(settings.panel_url, settings.panel_login, settings.panel_password)
+    xui_client = XUIClient(
+        settings.panel_url,
+        settings.panel_login,
+        settings.panel_password,
+        settings.panel_inbound_id,
+    )
     broadcast_service = BroadcastService(
         bot,
         db,
