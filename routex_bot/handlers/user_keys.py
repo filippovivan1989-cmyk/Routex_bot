@@ -9,7 +9,9 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 from routex_bot import texts
 from routex_bot.config import Settings
 from routex_bot.db import Database
-from routex_bot.services.xui_client import XUIClient, ensure_or_create_key
+from tenacity import RetryError
+
+from routex_bot.services.xui_client import XUIClient, XUIError, ensure_or_create_key
 
 router = Router(name="user_keys")
 
@@ -32,7 +34,16 @@ async def cmd_get_key(
     if not user:
         return
     await db.ensure_user(user.id, user.username)
-    key = await ensure_or_create_key(db, xui_client, user.id)
+    try:
+        key = await ensure_or_create_key(db, xui_client, user.id)
+    except XUIError as exc:
+        await message.answer(texts.PANEL_TEMPORARY_ERROR)
+        await db.write_audit(
+            user.id,
+            "panel_error",
+            {"command": "getkey", "error": str(exc), "tg_id": user.id},
+        )
+        return
     await message.answer(
         texts.KEY_RESPONSE.format(key=key),
         reply_markup=_instructions_keyboard(settings),
@@ -42,17 +53,54 @@ async def cmd_get_key(
 
 @router.message(Command("mykey"))
 @router.message(F.text == texts.START_BUTTONS["my_key"])
-async def cmd_my_key(message: Message, db: Database, settings: Settings) -> None:
+async def cmd_my_key(
+    message: Message,
+    db: Database,
+    settings: Settings,
+    xui_client: XUIClient,
+) -> None:
     user = message.from_user
     if not user:
         return
     record = await db.ensure_user(user.id, user.username)
-    key = record["key"]
-    if not key:
-        await message.answer(texts.MY_KEY_EMPTY)
+    try:
+        remote_key = await xui_client.fetch_client_by_remark(user.id)
+    except RetryError as exc:
+        inner_exc = exc.last_attempt.exception() if exc.last_attempt else exc
+        await db.write_audit(
+            user.id,
+            "panel_error",
+            {"command": "mykey", "error": str(inner_exc), "tg_id": user.id},
+        )
+        await message.answer(texts.PANEL_TEMPORARY_ERROR)
         return
+    except XUIError as exc:
+        await db.write_audit(
+            user.id,
+            "panel_error",
+            {"command": "mykey", "error": str(exc), "tg_id": user.id},
+        )
+        await message.answer(texts.PANEL_TEMPORARY_ERROR)
+        return
+
+    if not remote_key:
+        if record["key"]:
+            await db.clear_user_key(user.id)
+            await db.write_audit(
+                user.id,
+                "panel_client_missing",
+                {"command": "mykey", "remark": f"routex-{user.id}"},
+            )
+            await message.answer(texts.MY_KEY_MISSING_REMOTE)
+        else:
+            await message.answer(texts.MY_KEY_EMPTY)
+        await db.touch_activity(user.id)
+        return
+
+    if record["key"] != remote_key:
+        await db.update_user_key(user.id, remote_key)
     await message.answer(
-        texts.MY_KEY_RESPONSE.format(key=key),
+        texts.MY_KEY_RESPONSE.format(key=remote_key),
         reply_markup=_instructions_keyboard(settings),
     )
     await db.touch_activity(user.id)
