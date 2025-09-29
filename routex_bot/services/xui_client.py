@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections import deque
 from typing import Any, Dict, Iterable
 
 import httpx
@@ -69,38 +70,56 @@ class XUIClient:
         if not obj:
             return None
 
-        def _iter_clients(items: Iterable[Any]) -> Iterable[Dict[str, Any]]:
-            for item in items:
-                if not isinstance(item, dict):
-                    continue
-                stats = item.get("clientStats")
-                if isinstance(stats, list):
-                    for stat in stats:
-                        if isinstance(stat, dict):
-                            yield stat
-                settings = item.get("settings")
-                if isinstance(settings, str):
-                    try:
-                        settings = json.loads(settings)
-                    except json.JSONDecodeError:
-                        settings = None
-                if isinstance(settings, dict):
-                    clients = settings.get("clients")
-                    if isinstance(clients, list):
-                        for client in clients:
-                            if isinstance(client, dict):
-                                yield client
+        def _iter_inbounds(root: Any) -> Iterable[Dict[str, Any]]:
+            """Yield inbound entries regardless of the wrapper structure."""
+
+            queue: deque[Any] = deque([root])
+            while queue:
+                current = queue.popleft()
+                if isinstance(current, list):
+                    for item in current:
+                        if isinstance(item, dict):
+                            queue.append(item)
+                elif isinstance(current, dict):
+                    if "settings" in current or "clientStats" in current:
+                        yield current
+                    for key in ("data", "inbounds", "items", "pageData", "list"):
+                        value = current.get(key)
+                        if isinstance(value, dict):
+                            queue.append(value)
+                        elif isinstance(value, list):
+                            queue.append(value)
+
+        def _iter_clients_from_inbound(inbound: Dict[str, Any]) -> Iterable[Dict[str, Any]]:
+            stats = inbound.get("clientStats")
+            if isinstance(stats, list):
+                for stat in stats:
+                    if isinstance(stat, dict):
+                        yield stat
+            settings = inbound.get("settings")
+            if isinstance(settings, str):
+                try:
+                    settings = json.loads(settings)
+                except json.JSONDecodeError:
+                    settings = None
+            if isinstance(settings, dict):
+                clients = settings.get("clients")
+                if isinstance(clients, list):
+                    for client in clients:
+                        if isinstance(client, dict):
+                            yield client
 
         def _looks_like_uuid(value: Any) -> bool:
             return isinstance(value, str) and value.count("-") >= 4 and len(value) >= 8
 
-        for client in _iter_clients(obj if isinstance(obj, list) else [obj]):
-            if client.get("remark") != remark:
-                continue
-            for key in ("clientId", "uuid", "id"):
-                candidate = client.get(key)
-                if _looks_like_uuid(candidate):
-                    return candidate
+        for inbound in _iter_inbounds(obj):
+            for client in _iter_clients_from_inbound(inbound):
+                if client.get("remark") != remark:
+                    continue
+                for key in ("clientId", "uuid", "id"):
+                    candidate = client.get(key)
+                    if _looks_like_uuid(candidate):
+                        return candidate
         return None
 
     @retry(
