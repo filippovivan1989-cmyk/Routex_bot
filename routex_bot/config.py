@@ -5,11 +5,18 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import List
 
-from pydantic import BaseSettings, Field, HttpUrl, validator
+from pydantic import BaseModel, Field, HttpUrl, field_validator
 
 
-class Settings(BaseSettings):
+class Settings(BaseModel):
     """Application settings loaded from environment variables."""
+
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "case_sensitive": False,
+        "extra": "ignore"
+    }
 
     bot_token: str = Field(..., alias="BOT_TOKEN")
     admin_ids: List[int] = Field(..., alias="ADMIN_IDS")
@@ -28,12 +35,8 @@ class Settings(BaseSettings):
     batch_delay_seconds: float = Field(1.5, alias="BATCH_DELAY_SECONDS")
     guide_url: str = Field("https://telegra.ph/RouteX-VPN-Guide-01-01", alias="GUIDE_URL")
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
-
-    @validator("admin_ids", pre=True)
+    @field_validator("admin_ids", mode="before")
+    @classmethod
     def parse_admin_ids(cls, value: str | List[int]) -> List[int]:
         if isinstance(value, list):
             return [int(v) for v in value]
@@ -43,8 +46,13 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     """Return cached application settings."""
-
-    return Settings()  # type: ignore[arg-type]
+    import os
+    from pydantic import ValidationError
+    
+    try:
+        return Settings.model_validate(os.environ)
+    except ValidationError as e:
+        raise RuntimeError(f"Configuration validation failed: {e}") from e
 
 
 __all__ = ["Settings", "get_settings"]

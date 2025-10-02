@@ -102,6 +102,17 @@ class Database:
                 action TEXT NOT NULL,
                 meta_json TEXT
             );
+
+            -- Индексы для улучшения производительности
+            CREATE INDEX IF NOT EXISTS idx_users_tg_id ON users(tg_id);
+            CREATE INDEX IF NOT EXISTS idx_users_key ON users(key);
+            CREATE INDEX IF NOT EXISTS idx_users_subscribed ON users(is_subscribed);
+            CREATE INDEX IF NOT EXISTS idx_users_activity ON users(last_activity_at);
+            CREATE INDEX IF NOT EXISTS idx_deliveries_schedule_user ON deliveries(schedule_id, user_id);
+            CREATE INDEX IF NOT EXISTS idx_deliveries_status ON deliveries(status);
+            CREATE INDEX IF NOT EXISTS idx_deliveries_sent_at ON deliveries(sent_at);
+            CREATE INDEX IF NOT EXISTS idx_audit_log_ts ON audit_log(ts);
+            CREATE INDEX IF NOT EXISTS idx_audit_log_action ON audit_log(action);
             """
         )
         await self.conn.commit()
@@ -278,8 +289,13 @@ class Database:
             sql += " AND is_donor = 1"
         elif seg_type == "custom_sql":
             where_clause = segment.get("where")
-            if not where_clause or "--" in where_clause:
-                raise ValueError("Некорректный custom_sql сегмент")
+            if not where_clause:
+                raise ValueError("Некорректный custom_sql сегмент: отсутствует WHERE условие")
+            # Базовая защита от SQL injection
+            dangerous_patterns = ["--", "/*", "*/", "union", "select", "insert", "update", "delete", "drop", "create", "alter"]
+            where_lower = where_clause.lower()
+            if any(pattern in where_lower for pattern in dangerous_patterns):
+                raise ValueError("Некорректный custom_sql сегмент: содержит опасные SQL конструкции")
             sql += f" AND {where_clause}"
         else:
             # default all_subscribed
@@ -336,8 +352,7 @@ class Database:
             segment=row["segment"],
             enabled=bool(row["enabled"]),
             created_at=datetime.fromisoformat(row["created_at"]),
-            updated_at=
-            datetime.fromisoformat(row["updated_at"]) if row["updated_at"] else datetime.fromisoformat(row["created_at"]),
+            updated_at=datetime.fromisoformat(row["updated_at"]) if row["updated_at"] else datetime.fromisoformat(row["created_at"]),
             next_run_at=datetime.fromisoformat(row["next_run_at"]) if row["next_run_at"] else None,
         )
 

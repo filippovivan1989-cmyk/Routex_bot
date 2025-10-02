@@ -7,6 +7,7 @@ import json
 from collections.abc import Iterable
 from typing import Any, Dict, List, Tuple
 
+import aiosqlite
 from aiogram import Bot
 from aiogram.exceptions import (TelegramAPIError, TelegramBadRequest, TelegramForbiddenError,
                                 TelegramNotFound, TelegramRetryAfter)
@@ -92,7 +93,7 @@ class BroadcastService:
     async def _retry_delivery(
         self,
         delivery_id: int,
-        user: Any,
+        user: aiosqlite.Row,
         text: str,
         parse_mode: str,
     ) -> bool:
@@ -125,7 +126,8 @@ class BroadcastService:
         }
         try:
             return template.format(**placeholders)
-        except KeyError:
+        except (KeyError, ValueError) as e:
+            self.logger.warning("Template rendering failed", error=str(e), template=template[:100])
             return template
 
     async def broadcast_event(self, event_type: str, payload: Dict[str, Any]) -> Tuple[int, int, int]:

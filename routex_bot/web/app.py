@@ -40,12 +40,28 @@ async def healthcheck(request: web.Request) -> web.Response:
 async def handle_event(request: web.Request) -> web.Response:
     settings: Settings = request.app["settings"]
     broadcast_service: BroadcastService = request.app["broadcast_service"]
-    data = await request.json()
+    
+    try:
+        data = await request.json()
+    except Exception as e:
+        LOGGER.warning("Invalid JSON in webhook request", error=str(e))
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+    
     event_type = data.get("event_type")
     payload = data.get("payload", {})
+    
     if not event_type:
         return web.json_response({"error": "event_type required"}, status=400)
-    LOGGER.info("Webhook event received", event_type=event_type)
+    
+    # Валидация event_type
+    if not isinstance(event_type, str) or len(event_type) > 100:
+        return web.json_response({"error": "Invalid event_type"}, status=400)
+    
+    # Валидация payload
+    if not isinstance(payload, dict):
+        return web.json_response({"error": "payload must be a dictionary"}, status=400)
+    
+    LOGGER.info("Webhook event received", event_type=event_type, payload_size=len(str(payload)))
     await broadcast_service.broadcast_event(event_type, payload)
     return web.json_response({"status": "queued"})
 
