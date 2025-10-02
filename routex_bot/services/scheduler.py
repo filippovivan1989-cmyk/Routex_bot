@@ -121,7 +121,7 @@ class SchedulerService:
                 schedule_id, job.next_run_time.astimezone(ZoneInfo("UTC"))
             )
 
-    def _build_trigger(self, schedule: Schedule):
+    def _build_trigger(self, schedule: Schedule) -> CronTrigger | IntervalTrigger:
         if schedule.type == "cron":
             return CronTrigger.from_crontab(schedule.spec, timezone=self.timezone)
         if schedule.type == "interval":
