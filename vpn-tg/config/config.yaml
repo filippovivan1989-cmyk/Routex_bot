@@ -1,0 +1,29 @@
+# Ссылки и тексты, которые подставляются в сообщения бота:
+links:
+  android_client_url: "https://example.com/android.apk"
+  ios_client_url: "https://example.com/ios"
+  windows_client_url: "https://example.com/windows.exe"
+  browser_ext_url: "https://example.com/extension.zip"
+  browser_ext_guide_url: "https://example.com/extension-guide"
+  donate_url: "https://example.com/donate"
+
+texts:
+  help_common: |
+    • Импортируй конфиг по QR или URI.
+    • Если не подключается — проверь время на устройстве, обнови клиента, проверь блокировки SNI.
+  browser_ext_install: |
+    1) Скачай архив расширения.
+    2) Открой chrome://extensions, включи «Режим разработчика».
+    3) «Загрузить распакованное» → укажи папку с расширением.
+
+# Маппинг ИМЕН запросов из Postman-коллекции на логические операции сервиса:
+postman_mapping:
+  find_by_user: "Clients / FindByTelegramId"
+  create_for_user: "Clients / CreateForTelegram"
+  revoke_by_user: "Clients / RevokeByTelegram"
+  status_by_user: "Clients / GetStatusByTelegram"
+
+# Параметры по умолчанию для создания ключа:
+defaults:
+  protocol: "vless"
+  inbound_id: 1
