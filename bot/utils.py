@@ -4,7 +4,11 @@ import base64
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, TypeVar
+
+from aiogram import Bot
+
+T = TypeVar("T")
 
 import qrcode
 import yaml
@@ -40,3 +44,7 @@ def ensure_png_bytes(qr_base64: str | None, uri: str) -> bytes:
     image.save(buffer, format="PNG")
     buffer.seek(0)
     return buffer.read()
+
+
+def get_bot_data(bot: Bot, name: str, default: T | None = None) -> T | None:
+    return getattr(bot, name, default)

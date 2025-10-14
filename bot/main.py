@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 from aiogram import Bot, Dispatcher, F
+from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart
 from aiogram.types import CallbackQuery, Message
@@ -22,16 +23,21 @@ logger = logging.getLogger("bot")
 
 async def start_handler(message: Message) -> None:
     bot = message.bot
-    menu_renderer: MenuRenderer = bot["menu_renderer"]
-    text, keyboard = menu_renderer.root()
-    await message.answer(text, reply_markup=keyboard)
+    menu_renderer: MenuRenderer | None = getattr(bot, "menu_renderer", None)
+    if menu_renderer:
+        text, keyboard = menu_renderer.root()
+        await message.answer(text, reply_markup=keyboard)
+    else:
+        logger.error("Menu renderer is not configured")
 
 
 async def back_to_root(callback: CallbackQuery) -> None:
-    menu_renderer: MenuRenderer = callback.bot["menu_renderer"]
-    if callback.message:
+    menu_renderer: MenuRenderer | None = getattr(callback.bot, "menu_renderer", None)
+    if menu_renderer and callback.message:
         text, keyboard = menu_renderer.root()
         await callback.message.edit_text(text, reply_markup=keyboard)
+    elif not menu_renderer:
+        logger.error("Menu renderer is not configured")
     await callback.answer()
 
 
@@ -55,16 +61,16 @@ async def main() -> None:
     default_protocol = os.getenv("DEFAULT_PROTOCOL", yaml_config.defaults.get("protocol", "vless"))
     default_inbound_id = int(os.getenv("DEFAULT_INBOUND_ID", yaml_config.defaults.get("inbound_id", 1)))
 
-    bot = Bot(bot_token, parse_mode=ParseMode.MARKDOWN)
+    bot = Bot(bot_token, default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN))
     dp = Dispatcher()
 
     service_client = ServiceClient(service_base, hmac_secret, timeout=timeout)
     menu_renderer = MenuRenderer(yaml_config)
 
-    bot["config"] = yaml_config
-    bot["service_client"] = service_client
-    bot["menu_renderer"] = menu_renderer
-    bot["defaults"] = {"protocol": default_protocol, "inbound_id": default_inbound_id}
+    setattr(bot, "config", yaml_config)
+    setattr(bot, "service_client", service_client)
+    setattr(bot, "menu_renderer", menu_renderer)
+    setattr(bot, "defaults", {"protocol": default_protocol, "inbound_id": default_inbound_id})
 
     dp.message.register(start_handler, CommandStart())
     dp.callback_query.register(back_to_root, F.data == "menu:root")

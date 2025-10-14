@@ -3,12 +3,14 @@ from __future__ import annotations
 from aiogram import F, Router
 from aiogram.types import CallbackQuery
 
+from ..utils import get_bot_data
+
 router = Router()
 
 
 @router.callback_query(F.data == "menu:help")
 async def show_help_root(callback: CallbackQuery) -> None:
-    menu_renderer = callback.bot.get("menu_renderer")
+    menu_renderer = get_bot_data(callback.bot, "menu_renderer")
     if menu_renderer and callback.message:
         text, keyboard = menu_renderer.help_root()
         await callback.message.edit_text(text, reply_markup=keyboard)
@@ -24,28 +26,28 @@ async def _send_link(callback: CallbackQuery, title: str, url: str) -> None:
 
 @router.callback_query(F.data == "help:android")
 async def help_android(callback: CallbackQuery) -> None:
-    config = callback.bot.get("config")
+    config = get_bot_data(callback.bot, "config")
     url = config.links.get("android_client_url", "") if config else ""
     await _send_link(callback, "📱 Android клиент", url)
 
 
 @router.callback_query(F.data == "help:ios")
 async def help_ios(callback: CallbackQuery) -> None:
-    config = callback.bot.get("config")
+    config = get_bot_data(callback.bot, "config")
     url = config.links.get("ios_client_url", "") if config else ""
     await _send_link(callback, "🍏 iOS клиент", url)
 
 
 @router.callback_query(F.data == "help:windows")
 async def help_windows(callback: CallbackQuery) -> None:
-    config = callback.bot.get("config")
+    config = get_bot_data(callback.bot, "config")
     url = config.links.get("windows_client_url", "") if config else ""
     await _send_link(callback, "🖥 Windows клиент", url)
 
 
 @router.callback_query(F.data == "help:faq")
 async def help_common(callback: CallbackQuery) -> None:
-    config = callback.bot.get("config")
+    config = get_bot_data(callback.bot, "config")
     text = config.texts.get("help_common", "") if config else ""
     if callback.message:
         await callback.message.answer(f"❓ Общие советы\n{text}")
