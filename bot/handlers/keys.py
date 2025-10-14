@@ -11,7 +11,7 @@ from aiogram.types import BufferedInputFile, CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from ..service_client import NotFoundError, ServiceClient, ServiceClientError
-from ..utils import ensure_png_bytes
+from ..utils import ensure_png_bytes, get_bot_data
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ default_lock_manager = UserLockManager()
 
 
 def _get_defaults(callback: CallbackQuery) -> Dict[str, int | str]:
-    defaults = callback.bot.get("defaults", {})
+    defaults = get_bot_data(callback.bot, "defaults", {}) or {}
     return {
         "protocol": defaults.get("protocol", "vless"),
         "inbound_id": defaults.get("inbound_id", 1),
@@ -52,7 +52,7 @@ def _get_defaults(callback: CallbackQuery) -> Dict[str, int | str]:
 
 @router.callback_query(F.data == "menu:keys")
 async def show_keys_menu(callback: CallbackQuery) -> None:
-    menu_renderer = callback.bot.get("menu_renderer")
+    menu_renderer = get_bot_data(callback.bot, "menu_renderer")
     if menu_renderer and callback.message:
         text, keyboard = menu_renderer.keys()
         await callback.message.edit_text(text, reply_markup=keyboard)
@@ -100,7 +100,7 @@ async def _handle_service_error(callback: CallbackQuery, error: Exception) -> No
 
 @router.callback_query(F.data == "keys:get")
 async def handle_get_key(callback: CallbackQuery) -> None:
-    service_client: ServiceClient = callback.bot.get("service_client")
+    service_client: ServiceClient | None = get_bot_data(callback.bot, "service_client")
     if not service_client:
         await _handle_service_error(callback, RuntimeError("Service client unavailable"))
         return
@@ -127,7 +127,7 @@ async def handle_get_key(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data == "keys:qr")
 async def handle_show_qr(callback: CallbackQuery) -> None:
-    service_client: ServiceClient = callback.bot.get("service_client")
+    service_client: ServiceClient | None = get_bot_data(callback.bot, "service_client")
     if not service_client:
         await _handle_service_error(callback, RuntimeError("Service client unavailable"))
         return
@@ -153,7 +153,7 @@ async def handle_show_qr(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data == "keys:recreate")
 async def handle_recreate_key(callback: CallbackQuery) -> None:
-    service_client: ServiceClient = callback.bot.get("service_client")
+    service_client: ServiceClient | None = get_bot_data(callback.bot, "service_client")
     if not service_client:
         await _handle_service_error(callback, RuntimeError("Service client unavailable"))
         return
