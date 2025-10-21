@@ -1,0 +1,12 @@
+{
+  "id": "routex-local-env",
+  "name": "Routex VPS",
+  "_postman_variable_scope": "environment",
+  "_postman_exported_using": "manual",
+  "values": [
+    { "key": "HOST",     "value": "185.254.190.58", "enabled": true },
+    { "key": "PORT",     "value": "54321",          "enabled": true },
+    { "key": "USERNAME", "value": "admin",          "enabled": true },
+    { "key": "PASSWORD", "value": "secret",         "enabled": true }
+  ]
+}

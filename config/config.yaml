@@ -1,0 +1,33 @@
+links:
+  android_client_url: https://play.google.com/store/apps/details?id=com.v2raytun.android
+  ios_client_url: https://apps.apple.com/ru/app/v2raytun/id6476628951
+  windows_client_url: https://github.com/Happ-proxy/happ-desktop/releases/latest/download/setup-Happ.x86.exe
+  browser_ext_url: https://example.com/extension.zip
+  browser_ext_guide_url: https://example.com/extension-guide
+  donate_url: https://pay.cloudtips.ru/p/4b008f60
+
+texts:
+  help_common: |
+    • Импортируй конфиг по QR или URI.
+    • Если не подключается — проверь время на устройстве, обнови клиента, проверь блокировки SNI.
+  browser_ext_install: |
+    1) Скачай архив расширения.
+    2) Открой chrome://extensions, включи «Режим разработчика».
+    3) «Загрузить распакованное» → укажи папку с расширением.
+
+postman_mapping:
+  find_by_user: list_clients_on_inbound
+  create_for_user: create_for_user
+  revoke_by_user: Delete Client
+  status_by_user: Get Client
+
+defaults:
+  protocol: vless
+  inbound_id: 2
+  public_host: 185.254.190.58
+  vless_port: 443
+  reality_pbk: z5DopT_JthDMuQYIlrnttFTc2hlFmJd1Tkq6bhH7niE
+  reality_sni: www.googletagmanager.com
+  reality_fp: chrome
+  reality_sid: 3484e9e698f44c88
+  reality_spx: "/"
