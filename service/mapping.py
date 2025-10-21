@@ -70,7 +70,7 @@ def normalize_key_payload(raw: Any) -> Dict[str, Any]:
     client = _extract_client(data)
     delivery = _extract_delivery(data)  # может вернуться None
     if not client.get("email"):
-        raise MappingError("Client email is missing in panel response")
+        client["email"] = None
     return {"client": client, "delivery": delivery, "raw": raw}
 
 

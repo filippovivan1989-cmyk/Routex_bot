@@ -8,7 +8,7 @@ router = Router()
 
 @router.callback_query(F.data == "menu:browser")
 async def show_browser_menu(callback: CallbackQuery) -> None:
-    menu_renderer = callback.bot.get("menu_renderer")
+    menu_renderer = getattr(callback.bot, "menu_renderer", None)
     if menu_renderer and callback.message:
         text, keyboard = menu_renderer.browser()
         await callback.message.edit_text(text, reply_markup=keyboard)
@@ -17,7 +17,7 @@ async def show_browser_menu(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data == "browser:link")
 async def browser_link(callback: CallbackQuery) -> None:
-    config = callback.bot.get("config")
+    config = getattr(callback.bot, "config", None)
     url = config.links.get("browser_ext_url", "") if config else ""
     if callback.message:
         await callback.message.answer(f"🌍 Расширение\n{url}")
@@ -26,7 +26,7 @@ async def browser_link(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data == "browser:guide")
 async def browser_guide(callback: CallbackQuery) -> None:
-    config = callback.bot.get("config")
+    config = getattr(callback.bot, "config", None)
     guide_text = config.texts.get("browser_ext_install", "") if config else ""
     guide_url = config.links.get("browser_ext_guide_url", "") if config else ""
     message = f"📘 Инструкция\n{guide_text}"
