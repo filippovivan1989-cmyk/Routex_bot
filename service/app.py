@@ -242,8 +242,14 @@ async def lifespan(app: FastAPI):
     app.state.idempotency_cache = IdempotencyCache(ttl_seconds=300)
 
     # 1) XuiClient (обязателен)
-    app.state.xui = _build_xui()
-    await app.state.xui.login()
+    xui_client: Optional[XuiClient] = None
+    try:
+        xui_client = _build_xui()
+        await xui_client.login()
+    except Exception as exc:  # noqa: BLE001 - хотим отлавливать любые ошибки старта
+        logger.warning("XUI client disabled", extra={"reason": str(exc)})
+        xui_client = None
+    app.state.xui = xui_client
 
     # 2) PostmanRunner (опционален, для старых эндпоинтов)
     app.state.postman_runner = None
@@ -266,11 +272,17 @@ async def lifespan(app: FastAPI):
         runner: Optional[PostmanRunner] = getattr(app.state, "postman_runner", None)
         if runner:
             await runner.aclose()
-        if hasattr(app.state, "xui") and app.state.xui:
-            await app.state.xui.aclose()
+        xui_from_state: Optional[XuiClient] = getattr(app.state, "xui", None)
+        if xui_from_state:
+            await xui_from_state.aclose()
 
 
 app = FastAPI(title="VPN Service Adapter", lifespan=lifespan)
+
+# значения по умолчанию, если lifespan не успел выполниться
+app.state.idempotency_cache = IdempotencyCache(ttl_seconds=300)
+app.state.postman_runner = None
+app.state.xui = None
 
 # регистрируем exception handlers
 app.add_exception_handler(ServiceError, service_error_handler)
@@ -284,14 +296,13 @@ def get_runner() -> PostmanRunner:
     return runner
 
 
-def get_xui() -> XuiClient:
-    return app.state.xui
-
-
 # ====== Роуты ======
 
 @app.get("/health")
-async def healthcheck(xui: XuiClient = Depends(get_xui)) -> dict[str, str]:
+async def healthcheck() -> dict[str, str]:
+    xui: Optional[XuiClient] = getattr(app.state, "xui", None)
+    if not xui:
+        return {"status": "degraded", "xui": "not_configured"}
     try:
         _ = await xui.list_inbounds()
         return {"status": "ok", "xui": "up"}
@@ -301,11 +312,11 @@ async def healthcheck(xui: XuiClient = Depends(get_xui)) -> dict[str, str]:
 
 @app.get("/api/v1/keys/by-user", dependencies=[Depends(hmac_guard)])
 async def get_key_by_user(
+    request: Request,
     tg_user_id: int | None = None,
     inbound_id: int | None = None,
     email: str | None = None,
     nickname: str | None = None,
-    xui: XuiClient = Depends(get_xui),
 ) -> Dict[str, Any]:
     """
     1) GET /panel/api/inbounds/get/:inbound_id — читаем клиентов
@@ -317,53 +328,96 @@ async def get_key_by_user(
     if not inbound_id:
         raise ServiceError(400, "bad_request", "inbound_id is required")
 
+    # Если указали email/nickname — работаем напрямую через XUI (создаём при необходимости)
     user_email = (email or (f"{nickname}@routex" if nickname else None))
-    if not user_email:
-        raise ServiceError(400, "bad_request", "email or nickname is required")
-    user_email = user_email.lower()
-
-    # 1) читаем inbound напрямую через XuiClient
-    try:
-        inbound_payload = await xui.get_inbound(int(inbound_id))
-    except XuiNotFound:
-        raise ServiceError(404, "not_found", "Inbound not found")
-    except (XuiBadResponse, Exception) as e:
-        raise ServiceError(502, "panel_error", f"Failed to read inbound: {e!s}")
-
-    clients = _extract_clients_from_inbound(inbound_payload)
-    uuid = _find_client_uuid(clients, user_email)
-    action = "existing"
-
-    # 2) если клиента нет — добавляем и обновляем settings
-    if not uuid:
-        new_uuid = str(uuidlib.uuid4())
-        new_client = {"id": new_uuid, "email": user_email}
-        new_settings = _merge_client_into_settings(inbound_payload, new_client)
+    if user_email:
+        user_email = user_email.lower()
+        xui_client: Optional[XuiClient] = getattr(request.app.state, "xui", None)
+        if not xui_client:
+            raise ServiceError(503, "service_unavailable", "XUI client is not configured")
 
         try:
-            await xui.update_inbound_settings(int(inbound_id), new_settings)
+            inbound_payload = await xui_client.get_inbound(int(inbound_id))
+        except XuiNotFound:
+            raise ServiceError(404, "not_found", "Inbound not found")
         except (XuiBadResponse, Exception) as e:
-            raise ServiceError(502, "panel_error", f"Failed to update inbound settings: {e!s}")
+            raise ServiceError(502, "panel_error", f"Failed to read inbound: {e!s}")
 
-        # перечитываем для верификации
-        try:
-            reread_payload = await xui.get_inbound(int(inbound_id))
-        except (XuiNotFound, XuiBadResponse, Exception) as e:
-            raise ServiceError(502, "panel_error", f"Failed to reread inbound: {e!s}")
+        clients = _extract_clients_from_inbound(inbound_payload)
+        uuid = _find_client_uuid(clients, user_email)
+        action = "existing"
 
-        clients2 = _extract_clients_from_inbound(reread_payload)
-        uuid = _find_client_uuid(clients2, user_email)
         if not uuid:
-            raise ServiceError(502, "panel_error", "Client was created but not found on reread")
-        action = "created"
+            new_uuid = str(uuidlib.uuid4())
+            new_client = {"id": new_uuid, "email": user_email}
+            new_settings = _merge_client_into_settings(inbound_payload, new_client)
 
-    delivery_uri = _build_vless_uri(settings.defaults.get("public_host"), uuid, user_email, settings.defaults)
-    return {
-        "status": "ok",
-        "action": action,
-        "client": {"email": user_email, "uuid": uuid},
-        "delivery_uri": delivery_uri,
-    }
+            try:
+                await xui_client.update_inbound_settings(int(inbound_id), new_settings)
+            except (XuiBadResponse, Exception) as e:
+                raise ServiceError(502, "panel_error", f"Failed to update inbound settings: {e!s}")
+
+            try:
+                reread_payload = await xui_client.get_inbound(int(inbound_id))
+            except (XuiNotFound, XuiBadResponse, Exception) as e:
+                raise ServiceError(502, "panel_error", f"Failed to reread inbound: {e!s}")
+
+            clients2 = _extract_clients_from_inbound(reread_payload)
+            uuid = _find_client_uuid(clients2, user_email)
+            if not uuid:
+                raise ServiceError(502, "panel_error", "Client was created but not found on reread")
+            action = "created"
+
+        delivery_uri = _build_vless_uri(settings.defaults.get("public_host"), uuid, user_email, settings.defaults)
+        raw_payload = {
+            "data": {
+                "email": user_email,
+                "uuid": uuid,
+                "panel_user_id": uuid,
+                "active": True,
+                "uri": delivery_uri,
+            }
+        }
+        try:
+            normalized = normalize_key_payload(raw_payload)
+        except MappingError as exc:
+            logger.error(
+                "xui_mapping_failed",
+                extra={"raw_payload": raw_payload, "reason": str(exc), "tg_user_id": tg_user_id},
+            )
+            normalized = {"client": {}, "delivery": None, "raw": raw_payload}
+
+        return {"status": "ok", "action": action, **normalized}
+
+    # Иначе — старый режим через Postman коллекцию
+    if tg_user_id is None:
+        raise ServiceError(400, "bad_request", "tg_user_id or email is required")
+
+    runner = get_runner()
+    mapping_name = settings.postman_mapping.get("find_by_user")
+    if not mapping_name:
+        raise ServiceError(500, "configuration_error", "Mapping for find_by_user is missing")
+
+    response = await runner.call(
+        mapping_name,
+        query={"tg_user_id": tg_user_id, "inbound_id": inbound_id},
+    )
+    if response.status_code == 404:
+        raise ServiceError(404, "not_found", "Client not found")
+    if response.status_code >= 400:
+        await handle_panel_error(response)
+
+    base_payload = response.json()
+    try:
+        normalized = normalize_key_payload(base_payload)
+    except MappingError as exc:
+        logger.error(
+            "find_mapping_failed",
+            extra={"raw_panel_payload": base_payload, "reason": str(exc), "tg_user_id": tg_user_id},
+        )
+        normalized = {"client": {}, "delivery": None, "raw": base_payload}
+
+    return {"status": "ok", "action": "existing", **normalized}
 
 
 # — Остальные эндпоинты остаются на PostmanRunner (как у тебя было)

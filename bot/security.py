@@ -5,7 +5,7 @@ from hashlib import sha256
 
 
 def make_signature(secret: str, timestamp: str, nonce: str, body: bytes) -> str:
-    message = f"{timestamp}:{nonce}:".encode("utf-8")
+    message = f"{timestamp}:{nonce}:".encode("utf-8") + body
     return hmac.new(secret.encode("utf-8"), message, sha256).hexdigest()
 
 
